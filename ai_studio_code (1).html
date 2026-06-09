@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>The Curbside POS</title>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --coffee-dark: #2C1810;
+            --coffee-medium: #633D2E;
+            --coffee-light: #C69B7B;
+            --coffee-cream: #F3E5AB;
+        }
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .bg-coffee-dark { background-color: var(--coffee-dark); }
+        .text-coffee-dark { color: var(--coffee-dark); }
+        .active-tab { border-bottom: 3px solid var(--coffee-light); color: var(--coffee-light); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .product-card:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 pb-20 lg:pb-0">
+
+    <!-- APP SHELL -->
+    <div id="app" class="flex flex-col h-screen">
+        
+        <!-- HEADER -->
+        <header class="bg-coffee-dark text-white p-4 shadow-md flex justify-between items-center">
+            <h1 class="text-xl font-bold tracking-tight">THE CURBSIDE <span class="font-light text-xs opacity-75">POS</span></h1>
+            <div id="connection-status" class="text-xs bg-green-500 px-2 py-1 rounded-full text-white uppercase font-bold">Offline Ready</div>
+        </header>
+
+        <!-- MAIN CONTENT -->
+        <main id="main-content" class="flex-1 overflow-y-auto no-scrollbar">
+            <!-- Dynamic Content Loaded Here -->
+        </main>
+
+        <!-- BOTTOM NAVIGATION (Mobile-First) -->
+        <nav class="fixed bottom-0 w-full bg-white border-t flex justify-around p-2 lg:relative lg:border-t-0 lg:bg-gray-100">
+            <button onclick="router.navigate('pos')" class="flex flex-col items-center p-2 text-coffee-dark">
+                <i class="fas fa-cash-register text-xl"></i>
+                <span class="text-[10px] mt-1 font-bold">POS</span>
+            </button>
+            <button onclick="router.navigate('inventory')" class="flex flex-col items-center p-2 text-gray-400">
+                <i class="fas fa-boxes-stacked text-xl"></i>
+                <span class="text-[10px] mt-1 font-bold">STOCK</span>
+            </button>
+            <button onclick="router.navigate('recipes')" class="flex flex-col items-center p-2 text-gray-400">
+                <i class="fas fa-blender text-xl"></i>
+                <span class="text-[10px] mt-1 font-bold">RECIPES</span>
+            </button>
+            <button onclick="router.navigate('reports')" class="flex flex-col items-center p-2 text-gray-400">
+                <i class="fas fa-chart-line text-xl"></i>
+                <span class="text-[10px] mt-1 font-bold">SALES</span>
+            </button>
+            <button onclick="router.navigate('settings')" class="flex flex-col items-center p-2 text-gray-400">
+                <i class="fas fa-cog text-xl"></i>
+                <span class="text-[10px] mt-1 font-bold">DATA</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- MODAL CONTAINER -->
+    <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl w-full max-w-md overflow-hidden">
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <script>
+        /** 
+         * MODULE: DATABASE SETUP
+         */
+        const db = new Dexie("CurbsideDB");
+        db.version(1).stores({
+            categories: '++id, name',
+            products: '++id, name, categoryId, price',
+            ingredients: '++id, name, currentStock, unit',
+            recipes: '++id, productId',
+            sales: '++id, timestamp, total, profit'
+        });
+
+        // Initialize default data if empty
+        async function initData() {
+            const catCount = await db.categories.count();
+            if (catCount === 0) {
+                await db.categories.bulkAdd([
+                    { name: 'Coffee' }, { name: 'Non-Coffee' }, { name: 'Matcha' }, 
+                    { name: 'Fruit Drinks' }, { name: 'Snacks' }, { name: 'Add-ons' }
+                ]);
+                
+                // Add an example ingredient
+                const milkId = await db.ingredients.add({
+                    name: 'Fresh Milk',
+                    unit: 'ml',
+                    purchasePrice: 80,
+                    purchaseQty: 1000,
+                    costPerUnit: 0.08,
+                    currentStock: 5000,
+                    reorderLevel: 1000
+                });
+
+                // Add an example product
+                const productId = await db.products.add({
+                    name: 'Cafe Latte',
+                    categoryId: 1,
+                    price: 120,
+                    available: true
+                });
+
+                // Add Recipe for Cafe Latte
+                await db.recipes.add({
+                    productId: productId,
+                    ingredients: [
+                        { ingredientId: milkId, amount: 200, unit: 'ml' }
+                    ]
+                });
+            }
+        }
+
+        /**
+         * MODULE: STATE MANAGEMENT & ROUTING
+         */
+        let cart = [];
+        const router = {
+            navigate: async (view) => {
+                const main = document.getElementById('main-content');
+                // Update Nav Icons
+                document.querySelectorAll('nav button').forEach(btn => btn.classList.replace('text-coffee-dark', 'text-gray-400'));
+                event?.currentTarget?.classList?.replace('text-gray-400', 'text-coffee-dark');
+
+                switch(view) {
+                    case 'pos': renderPOS(main); break;
+                    case 'inventory': renderInventory(main); break;
+                    case 'recipes': renderRecipes(main); break;
+                    case 'reports': renderReports(main); break;
+                    case 'settings': renderSettings(main); break;
+                }
+            }
+        };
+
+        /**
+         * MODULE: POS INTERFACE
+         */
+        async function renderPOS(container) {
+            const products = await db.products.toArray();
+            const categories = await db.categories.toArray();
+            
+            container.innerHTML = `
+                <div class="flex flex-col h-full lg:flex-row">
+                    <!-- Products Area -->
+                    <div class="flex-1 p-4 bg-gray-100 overflow-y-auto no-scrollbar">
+                        <div class="flex gap-2 overflow-x-auto pb-4 no-scrollbar">
+                            <button class="bg-coffee-dark text-white px-4 py-2 rounded-full text-sm whitespace-nowrap">All Items</button>
+                            ${categories.map(c => `<button class="bg-white border px-4 py-2 rounded-full text-sm whitespace-nowrap">${c.name}</button>`).join('')}
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-2">
+                            ${products.map(p => `
+                                <div onclick="addToCart(${p.id}, '${p.name}', ${p.price})" class="product-card bg-white p-3 rounded-xl shadow-sm border border-transparent active:border-coffee-light transition-all">
+                                    <div class="h-24 bg-gray-200 rounded-lg mb-2 flex items-center justify-center">
+                                        <i class="fas fa-coffee text-gray-400 text-2xl"></i>
+                                    </div>
+                                    <h3 class="font-bold text-sm leading-tight h-8 overflow-hidden">${p.name}</h3>
+                                    <p class="text-coffee-medium font-bold mt-1">₱${p.price.toFixed(2)}</p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    <!-- Cart / Sidebar -->
+                    <div class="w-full lg:w-96 bg-white border-l flex flex-col h-[400px] lg:h-full">
+                        <div class="p-4 border-b font-bold text-lg flex justify-between">
+                            <span>Current Order</span>
+                            <button onclick="clearCart()" class="text-red-500 text-sm font-normal">Clear</button>
+                        </div>
+                        <div id="cart-items" class="flex-1 overflow-y-auto p-4 space-y-4">
+                            <!-- Items here -->
+                        </div>
+                        <div class="p-4 bg-gray-50 space-y-2 border-t">
+                            <div class="flex justify-between text-sm"><span>Subtotal</span><span id="cart-subtotal">₱0.00</span></div>
+                            <div class="flex justify-between font-bold text-xl border-t pt-2"><span>Total</span><span id="cart-total" class="text-coffee-dark">₱0.00</span></div>
+                            <button onclick="checkout()" class="w-full bg-coffee-dark text-white py-4 rounded-xl font-bold mt-2 shadow-lg active:scale-95 transition-transform">
+                                COMPLETE SALE
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            updateCartUI();
+        }
+
+        window.addToCart = (id, name, price) => {
+            const existing = cart.find(i => i.id === id);
+            if (existing) {
+                existing.qty++;
+            } else {
+                cart.push({ id, name, price, qty: 1 });
+            }
+            updateCartUI();
+        };
+
+        function updateCartUI() {
+            const list = document.getElementById('cart-items');
+            if(!list) return;
+            list.innerHTML = cart.map((item, idx) => `
+                <div class="flex justify-between items-center">
+                    <div>
+                        <div class="font-bold text-sm">${item.name}</div>
+                        <div class="text-xs text-gray-500">₱${item.price} x ${item.qty}</div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button onclick="updateQty(${idx}, -1)" class="w-6 h-6 rounded-full bg-gray-200">-</button>
+                        <span class="font-bold">${item.qty}</span>
+                        <button onclick="updateQty(${idx}, 1)" class="w-6 h-6 rounded-full bg-gray-200">+</button>
+                    </div>
+                </div>
+            `).join('');
+            
+            const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+            document.getElementById('cart-subtotal').innerText = `₱${total.toFixed(2)}`;
+            document.getElementById('cart-total').innerText = `₱${total.toFixed(2)}`;
+        }
+
+        window.updateQty = (index, delta) => {
+            cart[index].qty += delta;
+            if (cart[index].qty <= 0) cart.splice(index, 1);
+            updateCartUI();
+        };
+
+        window.clearCart = () => { cart = []; updateCartUI(); };
+
+        /**
+         * MODULE: CHECKOUT & INVENTORY DEDUCTION
+         */
+        window.checkout = async () => {
+            if (cart.length === 0) return alert("Cart is empty");
+
+            // 1. Check Inventory & Deduct
+            for (const item of cart) {
+                const recipe = await db.recipes.where('productId').equals(item.id).first();
+                if (recipe) {
+                    for (const ing of recipe.ingredients) {
+                        const dbIng = await db.ingredients.get(ing.ingredientId);
+                        const deduction = ing.amount * item.qty;
+                        if (dbIng.currentStock < deduction) {
+                            return alert(`Insufficient stock: ${dbIng.name}`);
+                        }
+                        await db.ingredients.update(ing.ingredientId, {
+                            currentStock: dbIng.currentStock - deduction
+                        });
+                    }
+                }
+            }
+
+            // 2. Record Sale
+            const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+            await db.sales.add({
+                timestamp: new Date().getTime(),
+                items: [...cart],
+                total: total,
+                profit: total * 0.4 // Placeholder: calculate actual profit in real version
+            });
+
+            alert("Sale Completed!");
+            cart = [];
+            router.navigate('pos');
+        };
+
+        /**
+         * MODULE: INVENTORY MANAGEMENT
+         */
+        async function renderInventory(container) {
+            const stock = await db.ingredients.toArray();
+            container.innerHTML = `
+                <div class="p-4">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold">Inventory</h2>
+                        <button onclick="showAddIngredient()" class="bg-coffee-dark text-white px-4 py-2 rounded-lg text-sm">+ Add Item</button>
+                    </div>
+                    <div class="grid gap-4">
+                        ${stock.map(i => `
+                            <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 ${i.currentStock <= i.reorderLevel ? 'border-red-500' : 'border-green-500'}">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <h3 class="font-bold">${i.name}</h3>
+                                        <p class="text-xs text-gray-500">Unit: ${i.unit} | Supplier: ${i.supplier || 'N/A'}</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="font-bold text-lg ${i.currentStock <= i.reorderLevel ? 'text-red-600' : ''}">${i.currentStock} ${i.unit}</div>
+                                        <p class="text-[10px] uppercase font-bold text-gray-400">Current Stock</p>
+                                    </div>
+                                </div>
+                                <div class="mt-3 flex gap-2">
+                                    <button onclick="adjustStock(${i.id}, 1000)" class="text-xs bg-gray-100 px-2 py-1 rounded">+1k</button>
+                                    <button onclick="adjustStock(${i.id}, -1000)" class="text-xs bg-gray-100 px-2 py-1 rounded">-1k</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        window.adjustStock = async (id, amount) => {
+            const ing = await db.ingredients.get(id);
+            await db.ingredients.update(id, { currentStock: Math.max(0, ing.currentStock + amount) });
+            router.navigate('inventory');
+        };
+
+        /**
+         * MODULE: REPORTS
+         */
+        async function renderReports(container) {
+            const sales = await db.sales.toArray();
+            const totalRev = sales.reduce((sum, s) => sum + s.total, 0);
+            
+            container.innerHTML = `
+                <div class="p-4 pb-24">
+                    <h2 class="text-2xl font-bold mb-4">Daily Performance</h2>
+                    <div class="grid grid-cols-2 gap-4 mb-6">
+                        <div class="bg-coffee-dark text-white p-4 rounded-2xl shadow-lg">
+                            <p class="text-xs opacity-70 uppercase font-bold">Today's Sales</p>
+                            <p class="text-2xl font-black">₱${totalRev.toLocaleString()}</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-2xl shadow-md border">
+                            <p class="text-xs text-gray-500 uppercase font-bold">Total Orders</p>
+                            <p class="text-2xl font-black">${sales.length}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-4 rounded-2xl shadow-md border mb-6">
+                        <h3 class="font-bold mb-4">Sales Trend</h3>
+                        <canvas id="salesChart" height="200"></canvas>
+                    </div>
+
+                    <button onclick="exportData()" class="w-full bg-green-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+                        <i class="fas fa-file-excel"></i> Export CSV Report
+                    </button>
+                </div>
+            `;
+            
+            // Render Chart
+            const ctx = document.getElementById('salesChart');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: sales.map(s => new Date(s.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})),
+                    datasets: [{
+                        label: 'Sales Amount',
+                        data: sales.map(s => s.total),
+                        borderColor: '#633D2E',
+                        tension: 0.4,
+                        fill: true,
+                        backgroundColor: 'rgba(99, 61, 46, 0.1)'
+                    }]
+                },
+                options: { plugins: { legend: { display: false } } }
+            });
+        }
+
+        /**
+         * MODULE: BACKUP & SETTINGS
+         */
+        async function renderSettings(container) {
+            container.innerHTML = `
+                <div class="p-6 space-y-6">
+                    <h2 class="text-2xl font-bold">System Settings</h2>
+                    
+                    <div class="bg-white rounded-xl shadow-sm border p-4">
+                        <h3 class="font-bold mb-2">Data Management</h3>
+                        <p class="text-sm text-gray-500 mb-4">Export all your data to a JSON file for backup.</p>
+                        <div class="grid grid-cols-1 gap-3">
+                            <button onclick="exportBackup()" class="bg-blue-600 text-white py-3 rounded-lg font-bold">Download Backup (.json)</button>
+                            <label class="bg-gray-100 py-3 rounded-lg font-bold text-center cursor-pointer border-2 border-dashed border-gray-300">
+                                Import Backup
+                                <input type="file" class="hidden" onchange="importBackup(event)">
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="bg-red-50 rounded-xl shadow-sm border border-red-100 p-4">
+                        <h3 class="font-bold text-red-700 mb-2">Factory Reset</h3>
+                        <p class="text-sm text-red-600 mb-4">Delete all data from this device. This cannot be undone.</p>
+                        <button onclick="resetApp()" class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold">Wipe Database</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        window.exportBackup = async () => {
+            const data = {
+                products: await db.products.toArray(),
+                categories: await db.categories.toArray(),
+                ingredients: await db.ingredients.toArray(),
+                recipes: await db.recipes.toArray(),
+                sales: await db.sales.toArray()
+            };
+            const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `curbside_backup_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+        };
+
+        window.resetApp = async () => {
+            if(confirm("Are you absolutely sure? This will delete all products, stock, and sales history.")){
+                await db.delete();
+                location.reload();
+            }
+        };
+
+        // START APP
+        initData().then(() => {
+            router.navigate('pos');
+        });
+
+    </script>
+</body>
+</html>

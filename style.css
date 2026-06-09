@@ -1,0 +1,78 @@
+:root {
+    --bg: #1a1a1a;
+    --card: #2d2d2d;
+    --text: #ffffff;
+    --accent: #d7ccc8;
+    --primary: #8d6e63;
+    --danger: #ef5350;
+    --success: #66bb6a;
+}
+
+body.light-mode {
+    --bg: #f5f5f5;
+    --card: #ffffff;
+    --text: #3e2723;
+    --accent: #5d4037;
+}
+
+* { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    padding-bottom: 70px;
+}
+
+#main-content { padding: 15px; }
+
+/* Navigation */
+.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    height: 65px;
+    background: var(--card);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    z-index: 100;
+}
+
+.nav-item {
+    background: none; border: none; color: var(--text);
+    display: flex; flex-direction: column; align-items: center; font-size: 12px;
+}
+
+.nav-item span { margin-top: 4px; }
+
+/* POS Layout */
+.pos-container { display: grid; grid-template-columns: 1fr 350px; gap: 15px; height: calc(100vh - 100px); }
+
+@media (max-width: 768px) {
+    .pos-container { grid-template-columns: 1fr; }
+    .pos-cart { position: fixed; bottom: 65px; left: 0; width: 100%; height: 50vh; background: var(--card); display: none; }
+    .pos-cart.active { display: block; }
+}
+
+.category-scroll { display: flex; overflow-x: auto; gap: 10px; margin-bottom: 15px; padding-bottom: 5px; }
+.cat-btn { background: var(--primary); border: none; color: white; padding: 8px 15px; border-radius: 20px; white-space: nowrap; }
+
+.product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.product-card { background: var(--card); padding: 15px; border-radius: 12px; text-align: center; cursor: pointer; border: 1px solid rgba(255,255,255,0.05); }
+
+/* Tables & Lists */
+.table-container { background: var(--card); border-radius: 10px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.05); }
+
+/* Modal */
+.modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); z-index: 1000; }
+.modal-content { background: var(--card); margin: 10% auto; padding: 20px; width: 90%; max-width: 400px; border-radius: 15px; }
+input, select { width: 100%; padding: 12px; margin: 8px 0; background: #3d3d3d; border: 1px solid #555; color: white; border-radius: 8px; }
+
+.btn-add { background: var(--primary); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; font-size: 24px; cursor: pointer; }
+.btn-checkout { width: 100%; padding: 15px; background: var(--success); border: none; color: white; border-radius: 8px; font-weight: bold; margin-top: 10px; }
+.alert-list { list-style: none; padding: 0; color: var(--danger); }
